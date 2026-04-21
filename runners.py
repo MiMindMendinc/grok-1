@@ -593,13 +593,27 @@ def make_mesh(
     return jax.sharding.Mesh(device_mesh, ("data", "model"))
 
 
-def sample_from_model(server, prompt, max_len, temperature):
+def sample_from_model(
+    server,
+    prompt: str,
+    max_len: int = 128,
+    temperature: float = 0.7,
+    nucleus_p: float = 0.95,
+    rng_seed: int = 42,
+):
+    if temperature <= 0:
+        raise ValueError(f"temperature must be > 0, got {temperature}")
+    if not 0 < nucleus_p <= 1:
+        raise ValueError(f"nucleus_p must be in (0, 1], got {nucleus_p}")
+    if max_len <= 0:
+        raise ValueError(f"max_len must be > 0, got {max_len}")
+
     next(server)
     inp = Request(
         prompt=prompt,
         temperature=temperature,
-        nucleus_p=1.0,
-        rng_seed=42,
+        nucleus_p=nucleus_p,
+        rng_seed=rng_seed,
         max_len=max_len,
     )
     return server.send(inp)
