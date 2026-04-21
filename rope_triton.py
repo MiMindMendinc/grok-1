@@ -16,11 +16,18 @@ def apply_rope_jax_compatible(
     const_position: Optional[int] = None,
     t=None,
 ):
-    """NumPy/JAX-compatible fallback path used by the JAX model integration.
+    """JAX-facing RoPE entrypoint.
 
-    This implementation keeps FP32 phase math for numerical stability and mirrors the
-    phase construction used by the optimized JAX RoPE path.
+    When a CUDA Triton runtime is available and the call uses the standard position mode,
+    this routes through the actual Triton kernel bridge. Otherwise it falls back to the
+    numerically equivalent JAX implementation below.
     """
+    if const_position is None and t is None and can_apply_rope_to_jax_array(x):
+        try:
+            return apply_rope_triton_jax(x=x, offset=offset, inv_freq=inv_freq)
+        except Exception:
+            pass
+
     import jax.numpy as jnp
 
     fprop_dtype = x.dtype
@@ -58,11 +65,6 @@ def _torch_modules():
     import triton.language as tl
 
     return torch, triton, tl
-
-
-def _rotate_half_torch(x):
-    x1, x2 = x.chunk(2, dim=-1)
-    return x.new_empty(x.shape).copy_(x).copy_(torch.cat((-x2, x1), dim=-1))
 
 
 def apply_rope_torch_reference(
@@ -229,7 +231,6 @@ def apply_rope_triton_jax(x, offset, inv_freq, const_position: Optional[int] = N
         )
 
     import jax.dlpack as jdl
-    import torch
     from torch.utils import dlpack as torch_dlpack
 
     torch_x = torch_dlpack.from_dlpack(x)
