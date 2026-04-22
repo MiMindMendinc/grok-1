@@ -704,7 +704,7 @@ class RotaryEmbedding(hk.Module):
         elif t is None:
             t = self._cached_position_index(sequence_len)[None, :] + jnp.expand_dims(offset, -1)
         phase = t[:, :, None] * self.inv_freq[None, None, :]
-        phase = jnp.repeat(phase, repeats=2, axis=-1)[:, :, None, :]
+        phase = jnp.tile(phase, reps=(1, 1, 2))[:, :, None, :]
 
         x = x * jnp.cos(phase) + rotate_half(x) * jnp.sin(phase)
         x = x.astype(fprop_dtype)
