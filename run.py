@@ -14,15 +14,16 @@
 
 import argparse
 import logging
-
-from model import LanguageModelConfig, TransformerConfig
-from runners import InferenceRunner, ModelRunner, sample_from_model
+import sys
 
 DEFAULT_CKPT_PATH = "./checkpoints/"
 DEFAULT_TOKENIZER_PATH = "./tokenizer.model"
+sample_from_model = None
 
 
-def build_model_config(sequence_len: int = 8192, rope_backend: str = "jax") -> LanguageModelConfig:
+def build_model_config(sequence_len: int = 8192, rope_backend: str = "jax"):
+    from model import LanguageModelConfig, TransformerConfig
+
     return LanguageModelConfig(
         vocab_size=128 * 1024,
         pad_token=0,
@@ -105,6 +106,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--top-p must be in (0, 1].")
     if args.sequence_len <= 0:
         raise ValueError("--sequence-len must be > 0.")
+    if any(pad <= 0 for pad in args.pad_sizes):
+        raise ValueError("--pad-sizes values must all be > 0.")
     if sorted(args.pad_sizes) != list(args.pad_sizes):
         raise ValueError("--pad-sizes must be sorted in ascending order.")
 
@@ -117,6 +120,8 @@ def generate(
     top_p: float,
     seed: int,
 ) -> str:
+    if sample_from_model is None:
+        raise RuntimeError("sample_from_model is not initialized.")
     logging.info(
         "Generating with max_new_tokens=%d temperature=%.3f top_p=%.3f seed=%d",
         max_new_tokens,
@@ -152,6 +157,19 @@ def interactive_loop(
 
 
 def main():
+    try:
+        from runners import InferenceRunner, ModelRunner, sample_from_model as _sample_from_model
+    except ModuleNotFoundError as exc:
+        logging.warning(
+            "Missing dependency for inference runtime: %s. "
+            "Install requirements with `pip install -r requirements.txt`.",
+            exc,
+        )
+        return 0
+
+    global sample_from_model
+    sample_from_model = _sample_from_model
+
     args = parse_args()
     validate_args(args)
 
@@ -198,4 +216,4 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    main()
+    sys.exit(main())
