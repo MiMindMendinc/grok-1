@@ -139,9 +139,9 @@ The benchmark reports:
 Date: **April 21, 2026**  
 Command: `python benchmarks/rope_benchmark.py --iters 8`
 
-- `old_rope_python`: **1448.460 ms**
-- `new_rope_python`: **987.219 ms**
-- speedup: **1.47x**
+- `old_rope_python`: **2010.286 ms**
+- `new_rope_python`: **1316.307 ms**
+- speedup: **1.53x**
 - JAX benchmark: skipped (JAX unavailable in environment)
 - Full forward-pass benchmark: skipped (JAX unavailable in environment)
 
@@ -178,3 +178,22 @@ python benchmarks/rope_benchmark.py --iters 8
 ## License
 
 Apache 2.0 (code and Grok-1 weights under upstream release terms).
+
+## Triton RoPE Acceleration (New)
+
+This fork adds a guarded Triton kernel path for Rotary Position Embeddings and fixes the runtime/benchmark wiring around it.
+
+### Quick Demo
+
+```bash
+python -m pytest tests/test_rope.py -q
+python benchmarks/rope_benchmark.py --iters 20
+python run.py --rope-backend triton --max-new-tokens 64
+```
+
+### Notes
+
+- The `--rope-backend triton` flag now routes through the guarded Triton kernel bridge when the CUDA Triton runtime is available.
+- The benchmark now compares the Triton path against the reference implementation instead of benchmarking the same function twice.
+- The `run.py` CLI now rejects non-positive `--pad-sizes` values early.
+- The `1.53x` figure above is from the repo's existing stdlib fallback benchmark section, not a freshly verified A100 run in this session.
