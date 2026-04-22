@@ -36,7 +36,7 @@ def apply_rope_jax_compatible(
         t = jnp.arange(sequence_len, dtype=jnp.float32)[None, :] + jnp.expand_dims(offset, -1)
 
     phase = t[:, :, None] * inv_freq[None, None, :]
-    phase = jnp.repeat(phase, repeats=2, axis=-1)[:, :, None, :]
+    phase = jnp.tile(phase, reps=(1, 1, 2))[:, :, None, :]
     x1, x2 = jnp.split(x, 2, axis=-1)
     rotated = jnp.concatenate((-x2, x1), axis=-1)
     return (x * jnp.cos(phase) + rotated * jnp.sin(phase)).astype(fprop_dtype)
@@ -81,7 +81,7 @@ def apply_rope_torch(
     seq_len = q.shape[1]
     t = torch.arange(seq_len, device=q.device, dtype=torch.float32)[None, :] + offset[:, None]
     phase = t[:, :, None] * inv_freq[None, None, :]
-    phase = torch.repeat_interleave(phase, repeats=2, dim=-1)[:, :, None, :]
+    phase = torch.cat((phase, phase), dim=-1)[:, :, None, :]
     cos = torch.cos(phase)
     sin = torch.sin(phase)
 
