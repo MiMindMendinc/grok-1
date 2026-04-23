@@ -15,6 +15,7 @@
 import functools
 import logging
 import re
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
@@ -441,6 +442,7 @@ class TransformerConfig:
     # Used for activation sharding.
     data_axis: Union[str, Tuple[str, ...]] = "data"
     model_axis: Union[str, Tuple[str, ...]] = "model"
+    rope_backend: str = "jax"
 
     def __post_init__(self):
         if isinstance(self.data_axis, list):
@@ -471,6 +473,7 @@ class TransformerConfig:
             num_selected_experts=self.num_selected_experts,
             data_axis=data_axis,
             model_axis=model_axis,
+            rope_backend=self.rope_backend,
         )
 
     def get_memory_sharding(self):
@@ -646,11 +649,23 @@ class RotaryEmbedding(hk.Module):
         dim: int,
         name: Optional[str] = None,
         base_exponent: int = 10000,
+        backend: str = "jax",
     ):
         super().__init__(name)
         self.dim = dim
         self.base_exponent = base_exponent
+        self.backend = backend
         assert self.dim % 2 == 0
+        exponents = jnp.arange(0, self.dim, 2, dtype=jnp.float32)
+        self.inv_freq = jnp.asarray(
+            1.0 / (self.base_exponent ** (exponents / self.dim)),
+            dtype=jnp.float32,
+        )
+
+    @staticmethod
+    @lru_cache(maxsize=16)
+    def _cached_position_index(sequence_len: int) -> jax.Array:
+        return jnp.arange(sequence_len, dtype=jnp.float32)
 
     def __call__(
         self,
@@ -660,30 +675,36 @@ class RotaryEmbedding(hk.Module):
         const_position: Optional[int] = None,
         t: Optional[jax.Array] = None,
     ) -> jax.Array:
+        if self.backend == "triton":
+            try:
+                import rope_triton
+
+                return rope_triton.apply_rope_jax_compatible(
+                    x=x,
+                    offset=offset,
+                    inv_freq=self.inv_freq,
+                    const_position=const_position,
+                    t=t,
+                )
+            except Exception as exc:
+                logger.warning("Triton RoPE real kernel unavailable, falling back to JAX: %s", exc)
+
         fprop_dtype = x.dtype
-        # Compute the per-dimension frequencies
-        exponents = jnp.arange(0, self.dim, 2, dtype=jnp.float32)
-        inv_freq = jnp.asarray(
-            1.0 / (self.base_exponent ** (exponents / self.dim)), dtype=jnp.float32
-        )
+        sequence_len = x.shape[seq_dim]
 
         if jnp.shape(offset) == ():
             # Offset can be a scalar or one offset per batch element.
-            offset = jnp.expand_dims(offset, 0)
+            offset = jnp.full((x.shape[0],), offset, dtype=jnp.float32)
+        else:
+            offset = offset.astype(jnp.float32)
 
         # Compute the per element phase (to pass into sin and cos)
-        if const_position:
-            t = const_position * jnp.ones(
-                (
-                    1,
-                    x.shape[seq_dim],
-                ),
-                dtype=jnp.float32,
-            )
+        if const_position is not None:
+            t = jnp.full((x.shape[0], sequence_len), const_position, dtype=jnp.float32)
         elif t is None:
-            t = jnp.arange(x.shape[seq_dim], dtype=jnp.float32) + jnp.expand_dims(offset, -1)
-        phase = jnp.einsum("bi,j->bij", t, inv_freq)
-        phase = jnp.tile(phase, reps=(1, 2))[:, :, None, :]
+            t = self._cached_position_index(sequence_len)[None, :] + jnp.expand_dims(offset, -1)
+        phase = t[:, :, None] * self.inv_freq[None, None, :]
+        phase = jnp.repeat(phase, repeats=2, axis=-1)[:, :, None, :]
 
         x = x * jnp.cos(phase) + rotate_half(x) * jnp.sin(phase)
         x = x.astype(fprop_dtype)
@@ -704,6 +725,7 @@ class MultiHeadAttention(hk.Module):
         attn_output_multiplier: 1.0,
         data_axis: Union[str, Tuple[str, ...]] = "data",
         model_axis: Union[str, Tuple[str, ...]] = "model",
+        rope_backend: str = "jax",
         name: Optional[str] = None,
     ):
         super().__init__(name=name)
@@ -716,6 +738,7 @@ class MultiHeadAttention(hk.Module):
         self.model_axis = model_axis
         self.attn_output_multiplier = attn_output_multiplier
         self.with_bias = with_bias
+        self.rope_backend = rope_backend
 
     def __call__(
         self,
@@ -798,7 +821,11 @@ class MultiHeadAttention(hk.Module):
             mesh=mesh,
         )  # [B, T, H, V]
 
-        rotate = RotaryEmbedding(dim=self.key_size, base_exponent=int(1e4))
+        rotate = RotaryEmbedding(
+            dim=self.key_size,
+            base_exponent=int(1e4),
+            backend=self.rope_backend,
+        )
         key_heads = rotate(key_heads, seq_dim=1, offset=(kv_memory.step if kv_memory else 0))
         query_heads = rotate(query_heads, seq_dim=1, offset=(kv_memory.step if kv_memory else 0))
 
@@ -922,6 +949,7 @@ class MHABlock(hk.Module):
     mesh: Any = None
     data_axis: Union[str, Tuple[str, ...]] = "data"
     model_axis: Union[str, Tuple[str, ...]] = "model"
+    rope_backend: str = "jax"
 
     @hk.transparent
     def __call__(
@@ -945,6 +973,7 @@ class MHABlock(hk.Module):
                 data_axis=self.data_axis,
                 model_axis=self.model_axis,
                 attn_output_multiplier=self.attn_output_multiplier,
+                rope_backend=self.rope_backend,
             )(
                 query,
                 key,
@@ -1026,6 +1055,7 @@ class DecoderLayer(hk.Module):
     shard_activations: bool = False
     attn_output_multiplier: float = 1.0
     mesh: Any = None
+    rope_backend: str = "jax"
 
     def __call__(
         self,
@@ -1053,6 +1083,7 @@ class DecoderLayer(hk.Module):
             mesh=self.mesh,
             data_axis=self.data_axis,
             model_axis=self.model_axis,
+            rope_backend=self.rope_backend,
         )(layer_norm(h), mask, layer_memory)
         h_attn = attn_output.embeddings
 
@@ -1309,6 +1340,7 @@ class Transformer(hk.Module):
     # Used for activation sharding
     data_axis: Union[str, Tuple[str, ...]] = "data"
     model_axis: Union[str, Tuple[str, ...]] = "model"
+    rope_backend: str = "jax"
 
     def init_memory(self, batch_size: int, sequence_len: int, dtype=jnp.bfloat16):
         return Memory(
@@ -1370,6 +1402,7 @@ class Transformer(hk.Module):
                 num_selected_experts=self.num_selected_experts,
                 name=name,
                 layer_index=layer_index,
+                rope_backend=self.rope_backend,
             )(
                 h,
                 mask,
