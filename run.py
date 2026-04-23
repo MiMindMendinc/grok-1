@@ -106,6 +106,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--top-p must be in (0, 1].")
     if args.sequence_len <= 0:
         raise ValueError("--sequence-len must be > 0.")
+    if any(pad <= 0 for pad in args.pad_sizes):
+        raise ValueError("--pad-sizes values must all be > 0.")
     if sorted(args.pad_sizes) != list(args.pad_sizes):
         raise ValueError("--pad-sizes must be sorted in ascending order.")
 

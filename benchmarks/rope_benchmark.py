@@ -4,6 +4,7 @@ import random
 import time
 from dataclasses import dataclass
 
+
 def old_rope_python(head_dim: int, seq_len: int, offset: float, base_exponent: int = 10000) -> float:
     acc = 0.0
     for pos in range(seq_len):
@@ -138,28 +139,27 @@ def run_triton_rope_benchmark(batch: int, seq: int, q_heads: int, kv_heads: int,
         return None, f"Triton benchmark unavailable: {exc}"
 
     if not rope_triton.is_triton_available():
-        return None, "Triton benchmark unavailable: Triton/PyTorch runtime not installed."
+        return None, "Triton benchmark unavailable: Triton/PyTorch CUDA runtime not installed."
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda"
     q = torch.randn(batch, seq, q_heads, dim, device=device, dtype=torch.float32)
     k = torch.randn(batch, seq, kv_heads, dim, device=device, dtype=torch.float32)
     offset = torch.zeros((batch,), device=device, dtype=torch.float32)
+    inv_freq = 1.0 / (
+        10000 ** (torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim)
+    )
 
-    def baseline(q_, k_, off_):
-        return rope_triton.apply_rope_torch_reference(q_, k_, off_, base_exponent=10000)
+    def baseline(q_, k_, off_, inv_freq_):
+        return rope_triton.apply_rope_torch_reference(q_, k_, off_, inv_freq=inv_freq_)
 
-    def triton_path(q_, k_, off_):
-        # currently routes through rope_triton fused entrypoint
-        return rope_triton.apply_rope_torch(q_, k_, off_, base_exponent=10000)
+    def triton_path(q_, k_, off_, inv_freq_):
+        return rope_triton.apply_rope_torch(q_, k_, off_, inv_freq=inv_freq_)
 
-    if device == "cuda":
-        torch.cuda.synchronize()
-    old_ms = bench(baseline, q, k, offset, iters=iters)
-    if device == "cuda":
-        torch.cuda.synchronize()
-    new_ms = bench(triton_path, q, k, offset, iters=iters)
-    if device == "cuda":
-        torch.cuda.synchronize()
+    torch.cuda.synchronize()
+    old_ms = bench(baseline, q, k, offset, inv_freq, iters=iters)
+    torch.cuda.synchronize()
+    new_ms = bench(triton_path, q, k, offset, inv_freq, iters=iters)
+    torch.cuda.synchronize()
     return RopeBenchmarkResult(old_ms=old_ms, new_ms=new_ms), None
 
 
@@ -202,14 +202,14 @@ def main():
     else:
         print(f"forward_pass_jax: {forward_ms:.3f} ms")
 
-    print_section("Triton vs JAX/PyTorch RoPE timing")
+    print_section("Triton vs reference RoPE timing")
     triton_res, triton_err = run_triton_rope_benchmark(
         args.batch, min(args.seq, 512), args.heads, max(1, args.heads // 4), args.dim, args.iters
     )
     if triton_res is None:
         print(f"skipped: {triton_err}")
     else:
-        print(f"baseline_ms:     {triton_res.old_ms:.3f} ms")
+        print(f"reference_ms:    {triton_res.old_ms:.3f} ms")
         print(f"triton_ms:       {triton_res.new_ms:.3f} ms")
         print(f"speedup:         {triton_res.speedup:.2f}x")
 

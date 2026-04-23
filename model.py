@@ -687,7 +687,7 @@ class RotaryEmbedding(hk.Module):
                     t=t,
                 )
             except Exception as exc:
-                logger.warning("Triton RoPE real kernel unavailable, falling back to JAX: %s", exc)
+                logger.warning("Triton RoPE backend unavailable, falling back to JAX: %s", exc)
 
         fprop_dtype = x.dtype
         sequence_len = x.shape[seq_dim]
