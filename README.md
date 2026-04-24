@@ -1,36 +1,38 @@
-# DominusUltra: Grok-1 JAX Inference Engine
+# Grok-1 Inference Fork — Michigan MindMend
 
-Production-focused JAX/Haiku inference stack for **Grok-1 (314B MoE)** with optimized RoPE, sharding-aware execution, benchmark tooling, and an optional Triton RoPE backend path.
+**A public fork of the open Grok-1 release focused on inference wiring, RoPE cleanup, benchmark entrypoints, and reproducible testing notes.**
 
----
-
-## Why this repo
-
-This project is tuned for practical large-model inference workflows:
-
-- clean inference CLI (`run.py`)
-- explicit mesh + padding-bucket controls
-- RoPE correctness fixes and optimizations
-- reproducible benchmark entrypoints
-- optional Triton-backed RoPE path (with safe fallback)
+This repository is based on the upstream `xai-org/grok-1` release. The goal of this fork is not to claim ownership of Grok-1 or its weights. The goal is to study, document, and improve practical inference paths around the released codebase.
 
 ---
 
-## Model specifications (Grok-1)
+## What this fork focuses on
 
-- **Total parameters**: 314B
-- **Architecture**: MoE (8 experts, top-2 routing)
-- **Layers**: 64
-- **Hidden size**: 6144
-- **Attention**: 48 Q heads / 8 KV heads (GQA)
-- **Context length**: 8192
-- **Tokenizer**: SentencePiece, vocab 131072
+- JAX / Haiku inference workflow notes
+- RoPE correctness and optimization work
+- sharding and padding-bucket configuration clarity
+- benchmark entrypoints for RoPE and model-forward paths
+- optional Triton RoPE backend exploration
+- clearer documentation of what is verified vs. what still needs accelerator testing
+
+---
+
+## Model context
+
+Grok-1 is a large mixture-of-experts model released by xAI. This repo keeps the model context visible for developers studying the inference stack:
+
+- **Architecture:** MoE
+- **Layers:** 64
+- **Hidden size:** 6144
+- **Attention:** GQA-style query/KV head layout
+- **Context length:** 8192
+- **Tokenizer:** SentencePiece
+
+Refer to the upstream release and model license for authoritative model and weight terms.
 
 ---
 
 ## Installation
-
-### 1) Python environment
 
 ```bash
 python -m venv .venv
@@ -39,14 +41,12 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2) Model files
-
-Required:
+Required local files:
 
 - `tokenizer.model` at repo root
 - checkpoint files under `checkpoints/ckpt-0/...`
 
-Download from Hugging Face:
+Example download flow:
 
 ```bash
 pip install "huggingface_hub[hf_transfer]"
@@ -61,8 +61,6 @@ huggingface-cli download xai-org/grok-1 \
 
 ## Inference usage
 
-### One-shot generation
-
 ```bash
 python run.py \
   --checkpoint-path ./checkpoints \
@@ -74,49 +72,34 @@ python run.py \
   --rope-backend jax
 ```
 
-### Interactive generation
+Interactive mode:
 
 ```bash
 python run.py --interactive
 ```
 
-### CLI highlights
+Useful flags:
 
-- `--temperature` > 0
-- `--top-p` in (0, 1]
 - `--rope-backend {jax,triton}`
 - `--local-mesh-config DATA MODEL`
 - `--between-hosts-config DATA MODEL`
-- `--pad-sizes ...` (ascending buckets)
+- `--pad-sizes ...`
+- `--temperature`
+- `--top-p`
 
 ---
 
-## Optimized RoPE
+## RoPE work
 
-The RoPE path includes:
+This fork documents and experiments with Rotary Position Embedding paths, including:
 
-1. Correct `const_position=0` behavior.
-2. Cached inverse frequencies (`inv_freq`) instead of recomputing per call.
-3. Cached position index reuse.
-4. Backend switch (`jax`/`triton`) via config + CLI.
+1. correct handling of position offsets
+2. cached inverse-frequency reuse
+3. cached position-index reuse
+4. backend switching between JAX and guarded Triton paths
+5. benchmark entrypoints for comparing reference and optimized behavior
 
-### Triton backend
-
-`rope_triton.py` provides:
-
-- fused Q+K RoPE application entrypoint for PyTorch tensors,
-- GQA/MQA-compatible tensor shape handling,
-- decode/prefill compatible offset handling,
-- FP32 phase math for stable cos/sin generation,
-- safe fallback behavior when Triton is unavailable.
-
-Set backend from CLI:
-
-```bash
-python run.py --rope-backend triton
-```
-
-If Triton/PyTorch is not present, the implementation falls back to JAX RoPE.
+Triton support is treated as an experimental acceleration path. If Triton/PyTorch/CUDA are unavailable, the safer path is to use the JAX implementation.
 
 ---
 
@@ -128,44 +111,22 @@ Run:
 python benchmarks/rope_benchmark.py --iters 8
 ```
 
-The benchmark reports:
+The benchmark may report:
 
-- RoPE-only comparison (`old` vs `new`)
-- JAX RoPE timing (if JAX installed)
-- full model forward-pass timing (if JAX+Haiku installed)
+- reference RoPE timing
+- optimized RoPE timing
+- JAX RoPE timing, if JAX is installed
+- model-forward timing, if the full runtime and checkpoints are available
 
-### Latest benchmark results (this environment)
+### Current documented result
 
-Date: **April 21, 2026**  
-Command: `python benchmarks/rope_benchmark.py --iters 8`
+A previous fallback benchmark run reported roughly **1.53x** speedup for the optimized Python/RoPE path in an environment without full JAX accelerator support.
 
-- `old_rope_python`: **2010.286 ms**
-- `new_rope_python`: **1316.307 ms**
-- speedup: **1.53x**
-- JAX benchmark: skipped (JAX unavailable in environment)
-- Full forward-pass benchmark: skipped (JAX unavailable in environment)
-
-> Note: these numbers are from the stdlib fallback benchmark path due environment package constraints. Use a JAX-enabled runtime for production-quality accelerator timings.
+Important note: this is **not** a production accelerator benchmark. Full Grok-1 throughput depends on hardware, sharding topology, memory bandwidth, runtime setup, and checkpoint availability.
 
 ---
 
-## Performance notes
-
-- RoPE optimization reduces repeated decode overhead by avoiding recomputation-heavy frequency setup.
-- Throughput/latency for full Grok-1 depends heavily on sharding topology and hardware memory bandwidth.
-- Tune `--pad-sizes`, mesh config, and batch settings to your cluster.
-
----
-
-## Contribution guidelines
-
-1. Keep changes modular and benchmarkable.
-2. Add/extend tests for correctness-sensitive paths.
-3. Include benchmark evidence for performance claims.
-4. Keep docs updated with flags, defaults, and known limitations.
-5. Use clear commit messages (scope + intent).
-
-Recommended local checks:
+## Recommended local checks
 
 ```bash
 python -m compileall model.py run.py runners.py tests benchmarks rope_triton.py
@@ -175,25 +136,52 @@ python benchmarks/rope_benchmark.py --iters 8
 
 ---
 
+## What I built / modified
+
+This fork is meant to show hands-on work in:
+
+- reading and modifying large open-model codebases
+- inference/runtime documentation
+- RoPE implementation details
+- benchmark hygiene
+- correctness-first performance experimentation
+- clear separation between verified results and future targets
+
+---
+
+## Recruiter notes
+
+This repo is useful evidence for roles involving:
+
+- LLM inference engineering
+- AI systems prototyping
+- model runtime testing
+- open-source codebase analysis
+- benchmark and evaluation workflows
+- performance-oriented debugging
+
+It should be read as a public research and engineering fork, not as a claim of owning Grok-1.
+
+---
+
+## Status
+
+Active research fork / portfolio project.
+
+Next improvements:
+
+- add reproducible accelerator benchmark logs
+- add clearer hardware setup notes
+- add CI checks where possible
+- document exact upstream changes
+- separate experimental Triton paths from stable runtime paths
+
+---
+
 ## License
 
-Apache 2.0 (code and Grok-1 weights under upstream release terms).
+Code and model assets follow the upstream release terms. See upstream xAI Grok-1 licensing for authoritative details.
 
-## Triton RoPE Acceleration (New)
+---
 
-This fork adds a guarded Triton kernel path for Rotary Position Embeddings and fixes the runtime/benchmark wiring around it.
-
-### Quick Demo
-
-```bash
-python -m pytest tests/test_rope.py -q
-python benchmarks/rope_benchmark.py --iters 20
-python run.py --rope-backend triton --max-new-tokens 64
-```
-
-### Notes
-
-- The `--rope-backend triton` flag now routes through the guarded Triton kernel bridge when the CUDA Triton runtime is available.
-- The benchmark now compares the Triton path against the reference implementation instead of benchmarking the same function twice.
-- The `run.py` CLI now rejects non-positive `--pad-sizes` values early.
-- The `1.53x` figure above is from the repo's existing stdlib fallback benchmark section, not a freshly verified A100 run in this session.
+Built by **Lyle Perrien II / Michigan MindMend Inc.** as a public AI systems learning and portfolio project.
