@@ -18,6 +18,26 @@ The script loads the checkpoint and samples from the model on a test input.
 Due to the large size of the model (314B parameters), a machine with enough GPU memory is required to test the model with the example code.
 The implementation of the MoE layer in this repository is not efficient. The implementation was chosen to avoid the need for custom kernels to validate the correctness of the model.
 
+
+# Browser demo
+
+You can spin up a small local website that sends prompts to this repository from your browser:
+
+```shell
+python web_app.py --backend demo --host 127.0.0.1 --port 8000
+```
+
+Then open <http://127.0.0.1:8000>. The default `demo` backend is a lightweight smoke test for the web UI and does not load the 314B parameter Grok-1 checkpoint.
+
+To power the same page with the real Grok-1 model, first install the dependencies, download the weights into `checkpoints/ckpt-0`, and run on hardware with enough accelerator memory:
+
+```shell
+pip install -r requirements.txt
+python web_app.py --backend grok --host 0.0.0.0 --port 8000
+```
+
+The Grok backend uses the same checkpoint, tokenizer, and generation path as `run.py`, so it has the same GPU memory requirements described above.
+
 # Model Specifications
 
 Grok-1 is currently designed with the following specifications:
