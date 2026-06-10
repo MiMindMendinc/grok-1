@@ -1,5 +1,7 @@
 # Grok-1 Inference Fork — Michigan MindMend
 
+> **Fork notice:** This fork exists for inference experiments and RoPE optimization work. It is not a standalone Grok-1 distribution. The headline change is a fused RoPE path, submitted upstream as [PR #434](https://github.com/xai-org/grok-1/pull/434). See the PR for the diff and benchmark methodology.
+
 **A public fork of the open Grok-1 release focused on inference wiring, RoPE cleanup, benchmark entrypoints, and reproducible testing notes.**
 
 This repository is based on the upstream `xai-org/grok-1` release. The goal of this fork is not to claim ownership of Grok-1 or its weights. The goal is to study, document, and improve practical inference paths around the released codebase.
