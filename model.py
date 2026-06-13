@@ -663,7 +663,6 @@ class RotaryEmbedding(hk.Module):
         )
 
     @staticmethod
-    @lru_cache(maxsize=16)
     def _cached_position_index(sequence_len: int) -> jax.Array:
         return jnp.arange(sequence_len, dtype=jnp.float32)
 
