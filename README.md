@@ -4,15 +4,15 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![JAX](https://img.shields.io/badge/Framework-JAX-red.svg)](https://github.com/google/jax)
 
-**Grok-1 Inference Engine** is a high-performance, mathematically verified fork of the xAI Grok-1 model. This repository provides a stable, optimized, and production-ready runtime for the world's largest open-weights model (314B parameters).
+This is a research fork of the xAI Grok-1 release used for RoPE, inference-wiring, and benchmark experiments. It is not an official xAI repository or a production-ready Grok service. Full-model validation requires the original weights and accelerator resources well beyond a typical workstation.
 
 ## 🚀 Key Features
 
-- **Mathematically Verified RoPE:** Fixed core bugs in Rotary Position Embedding (RoPE) phase construction, ensuring coherent text generation.
+- **RoPE regression work:** Includes focused tests for the repository's rotary-position code paths.
 - **Optimized JAX Runtime:** Leverages JAX SPMD for efficient activation sharding across multiple GPUs and hosts.
-- **2.1x Performance Boost:** Optimized Python fallback path for research environments without full accelerator access.
+- **Benchmark harness:** Provides a reproducible entry point for measuring the included RoPE path on the user's own hardware.
 - **Tracer-Leak Protection:** Advanced JAX implementation preventing `UnexpectedTracerError` during model initialization.
-- **Hybrid Backend Support:** Seamlessly switch between native JAX and experimental Triton kernels.
+- **Experimental backends:** Contains native JAX and exploratory Triton-oriented code paths that require environment-specific validation.
 
 ---
 
@@ -56,7 +56,7 @@ python3 run.py \
 
 ## 📊 Benchmarking & Verification
 
-We prioritize engineering hygiene. Run our suite of tests and benchmarks to verify your environment:
+Run the focused tests and benchmark to verify the code paths available in your environment. These commands do not validate full 314B-parameter inference:
 
 ```bash
 # Run regression tests
