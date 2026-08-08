@@ -1,44 +1,25 @@
 # Grok-1 Triton RoPE validation
 
-This directory contains an **optional** PyTorch/Triton implementation of the
-rotary embedding math used by `model.py::RotaryEmbedding`. It does not modify
-the JAX reference runtime or add dependencies to `requirements.txt`.
+This directory contains an **optional PyTorch/Triton reference implementation**
+of the rotary embedding math used by `model.py::RotaryEmbedding`.
+It does **not** modify the JAX runtime, `model.py`, or core requirements.
 
-> **Validation status:** the current revision fixes the RoPE frequency layout and
-> Triton launch geometry from earlier revisions. Performance numbers from older
-> revisions (including the PR title/body) should be treated as historical until
-> they are re-measured with this corrected implementation. The benchmark below
-> intentionally reports fresh results rather than embedding a claimed speedup.
+## Current status
 
-## What this PR proves — and what it does not
+- RoPE frequency layout corrected to match Grok-1's JAX implementation.
+- Triton launch geometry corrected.
+- Correctness coverage includes FP16, BF16, contiguous, non-contiguous,
+  in-place, out-of-place, offsets, multiple head counts, and neighboring dims.
+- A complete H100 benchmark matrix runner is included.
+- **No performance number from the pre-fix revision should be used.**
+  The original `2.81 ms -> 0.97 ms / 2.9x` result was measured before the
+  frequency-layout correction and is therefore invalid for the current code.
+- Fresh H100 results must be generated from the current branch before publishing
+  a replacement performance claim.
 
-This is a **kernel microbenchmark for PyTorch/Triton ports of Grok-1-style RoPE**.
-It validates the rotary math against a literal PyTorch translation of Grok-1's
-JAX implementation and measures the fused Triton kernel against that eager
-PyTorch reference with the same precomputed cos/sin tables.
+## Reviewer quick start
 
-It does **not** claim that Grok-1's JAX reference runtime or a full Grok serving
-stack becomes faster by the same factor. End-to-end model speedup must be
-measured separately in the target runtime.
-
-## Why this is reviewable
-
-The benchmark now uses the exact Grok-1 frequency layout:
-
-```python
-phase = jnp.einsum("bi,j->bij", t, inv_freq)
-phase = jnp.tile(phase, reps=(1, 2))[:, :, None, :]
-x = x * jnp.cos(phase) + rotate_half(x) * jnp.sin(phase)
-```
-
-The PyTorch reference therefore constructs `phase` by concatenating the
-half-width phase vector with itself. The Triton kernel is checked against that
-literal translation before any timing is reported.
-
-## Install the optional benchmark dependencies
-
-Use an environment with a supported NVIDIA GPU and matching CUDA/PyTorch build.
-For example:
+Install optional benchmark dependencies in a CUDA-capable environment:
 
 ```bash
 python -m venv .venv-triton
@@ -46,92 +27,91 @@ source .venv-triton/bin/activate
 pip install torch triton
 ```
 
-No Grok-1 checkpoint is needed for the kernel microbenchmark.
-
-## Correctness
+Run the correctness matrix:
 
 ```bash
 python examples/triton_rope_fused.py --check
 ```
 
+Run the complete H100 validation/benchmark matrix:
+
+```bash
+python examples/run_triton_rope_h100_matrix.py \
+  --output-dir benchmark_results/h100
+```
+
 The matrix covers:
 
-- FP16 and BF16
-- contiguous and non-contiguous tensors
-- Grok-1 head dimension (`D=128`) plus neighboring dimensions
-- scalar position offsets
-- out-of-place and in-place execution
-- query-head-like widths up to 48 heads
+- dtypes: FP16 and BF16
+- heads: 8 and 48
+- head dimension: 128
+- sequence lengths: 512, 1024, 2048, 4096, 8192, 16384
+- layouts: contiguous and non-contiguous
+- correctness check before every timed sequence length
+- latency, speedup, and maximum absolute error in JSON output
 
-Every timed benchmark performs a correctness comparison first.
+The runner also writes `manifest.json` with the Git commit, GPU name, compute
+capability, GPU memory, Python, PyTorch, CUDA runtime, Triton version, warmup,
+and repetition count.
 
-## Reproducible latency sweep
+## Reviewer acceptance checklist
 
-Grok-1's published maximum context is 8192 tokens, so the default sweep includes
-512 through 8192 and also 16384 as a stress point:
+- [ ] `python examples/triton_rope_fused.py --check` passes.
+- [ ] FP16 cases pass with the encoded FP16 tolerance.
+- [ ] BF16 cases pass with the encoded BF16 tolerance.
+- [ ] 8-head `D=128` runs complete through 8192 tokens.
+- [ ] 48-head `D=128` runs complete through 8192 tokens.
+- [ ] 16K stress cases complete where memory permits.
+- [ ] Non-contiguous cases pass correctness before timing.
+- [ ] In-place output matches the reference and reuses input storage.
+- [ ] Each result JSON reports latency, speedup, and max absolute error.
+- [ ] `manifest.json` records the exact software/hardware environment and commit.
 
-```bash
-python examples/triton_rope_fused.py \
-  --benchmark \
-  --sequence-lengths 512 1024 2048 4096 8192 16384 \
-  --heads 8 \
-  --dim 128 \
-  --dtype fp16 \
-  --json rope-h100-fp16.json
+## Grok-1 RoPE convention
+
+The benchmark uses the same frequency layout as `model.py::RotaryEmbedding`:
+
+```python
+phase = jnp.einsum("bi,j->bij", t, inv_freq)
+phase = jnp.tile(phase, reps=(1, 2))[:, :, None, :]
+x = x * jnp.cos(phase) + rotate_half(x) * jnp.sin(phase)
 ```
 
-For the 48 query-head shape:
-
-```bash
-python examples/triton_rope_fused.py \
-  --benchmark \
-  --sequence-lengths 512 1024 2048 4096 8192 \
-  --heads 48 \
-  --dim 128 \
-  --dtype bf16 \
-  --json rope-h100-bf16-q48.json
-```
-
-To exercise the strided path:
-
-```bash
-python examples/triton_rope_fused.py --benchmark --noncontiguous
-```
+The PyTorch reference therefore concatenates the half-width phase vector with
+itself. It does not use `repeat_interleave`.
 
 ## Measurement policy
 
-- GPU, PyTorch, and Triton versions are printed with every run.
-- Timing uses `triton.testing.do_bench`, which uses GPU timing rather than
-  wall-clock Python timing.
-- Warmup and repetition counts are configurable (`--warmup`, `--rep`).
-- The JSON output includes absolute PyTorch latency, absolute Triton latency,
-  speedup, and maximum absolute error for every shape.
-- Cos/sin construction is excluded from both timed paths; the comparison is the
-  RoPE application itself, not cache generation.
-- Results are not hard-coded into the source. Contributors and maintainers can
-  reproduce them on their own hardware.
+- Every timed case performs a correctness comparison first.
+- Timing uses `triton.testing.do_bench` rather than Python wall-clock timing.
+- Cos/sin cache construction is excluded from both timed paths.
+- The baseline is the eager PyTorch translation of the same RoPE operation.
+- Kernel microbenchmark speedup is **not** an end-to-end Grok/JAX speedup claim.
+- Fresh results should be tied to the exact Git commit and hardware manifest.
 
-## Suggested reviewer acceptance criteria
+## Numerical tolerances
 
-A maintainer can evaluate this contribution without loading the 314B checkpoint:
+The current harness uses:
 
-1. `python examples/triton_rope_fused.py --check` passes on a supported CUDA GPU.
-2. FP16 and BF16 errors stay within the encoded tolerances.
-3. The 8-head and 48-head `D=128` sweeps complete through 8192 tokens.
-4. The non-contiguous sweep passes correctness before timing.
-5. JSON results record hardware/software versions and fresh latency numbers.
+- FP16: `atol=2e-3`, `rtol=2e-3`
+- BF16: `atol=2e-2`, `rtol=2e-2`
 
-If these checks pass, the kernel is suitable as an optional example/reference
-for PyTorch/Triton ports. Integration into a production runtime should then be
-benchmarked independently at model level.
+These tolerances reflect the lower precision of the respective formats while
+remaining strict enough to catch material RoPE-layout or indexing errors.
+Maximum absolute error is recorded separately for every benchmarked shape.
+
+## Tuning policy
+
+The current kernel uses a simple launch heuristic: four warps for feature blocks
+up to 256 values and eight warps above that. It does not claim that this is the
+optimal H100 configuration.
+
+Autotune changes should be driven by the fresh H100 matrix, especially the
+48-head and non-contiguous cases. Any new configuration should be retained only
+if it improves measured latency without changing numerical results.
 
 ## Scope
 
-This contribution is deliberately an isolated optimization example. Grok-1's
-public repository is a JAX correctness/reference implementation, while Triton
-is a PyTorch-oriented kernel DSL. Integrating this file into `model.py` would
-change the runtime stack and is therefore outside this PR's scope.
-
-The useful artifact here is a corrected, independently measurable fused RoPE
-kernel that implements Grok-1's published RoPE convention and can be reused by
-PyTorch/Triton ports of the model.
+This PR is intentionally limited to an optional PyTorch/Triton reference and
+microbenchmark for Grok-1-style RoPE. It does not modify the existing JAX
+runtime or `model.py`, and it does not claim an equivalent full-model speedup.
