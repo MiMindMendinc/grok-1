@@ -1,50 +1,49 @@
-# Grok-1 Research Fork — Triton RoPE + Correctness-Gated Benchmarks
+# Grok-1 Research Fork
 
-**A focused research fork of [xai-org/grok-1](https://github.com/xai-org/grok-1).**
-This is **not** an official xAI repository.
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.txt)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB.svg)](https://www.python.org/downloads/)
+[![JAX](https://img.shields.io/badge/framework-JAX-red.svg)](https://github.com/google/jax)
+[![Tests](https://github.com/MiMindMendinc/grok-1/actions/workflows/tests.yml/badge.svg)](https://github.com/MiMindMendinc/grok-1/actions/workflows/tests.yml)
 
-This fork improves the rotary position embedding (RoPE) path, adds a guarded Triton backend, and ships a correctness-first benchmark harness. The goal is clean, inspectable inference research on the real Grok-1 architecture — not hype.
+> [!IMPORTANT]
+> **This is not an official xAI repository.** It is a research fork of [xai-org/grok-1](https://github.com/xai-org/grok-1), maintained by Michigan MindMend, under Apache 2.0.
 
-> Upstream PR: [#434](https://github.com/xai-org/grok-1/pull/434) (fused RoPE work)
+Focused work on rotary position embeddings (RoPE): a guarded Triton backend, JAX fallback, and a benchmark harness that **will not report a speedup** unless the numerical gate passes.
+
+Upstream fused-RoPE discussion: [xai-org/grok-1#434](https://github.com/xai-org/grok-1/pull/434).
 
 ---
 
 ## Why this fork exists
 
-The official Grok-1 release is excellent as a reference.
-This repository exists to make the RoPE and attention-related paths more explicit, testable, and optimizable.
+The official Grok-1 release is an excellent reference. This repository exists to make the RoPE and attention-related paths more explicit, testable, and optimizable — on the real architecture, without serving-stack hype.
 
-**What you get:**
-
-- Cleaner RoPE implementation with a Triton acceleration path
-- Correctness gates before any timing claims
-- Reproducible benchmark entry points
-- Explicit mesh / padding / sharding controls
-- A research-friendly structure for kernel and systems work
-
-**What you do not get:**
-
-- A production serving stack
-- Magic multi-x speedups without baselines
-- Support for running the full 314B model on a laptop
+| Included | Not included |
+| --- | --- |
+| Triton RoPE path with JAX fallback | Production serving |
+| Correctness gates before any timing | Unverified multi-x speedup claims |
+| Reproducible micro-benchmarks | Laptop-scale 314B inference |
+| Explicit mesh, padding, and sharding CLI | A hosted Grok API |
 
 ---
 
-## Model Specs (unchanged from upstream)
+## Model specs
 
-| Spec         | Value               |
-| ------------ | ------------------- |
-| Parameters   | 314B (MoE)          |
-| Experts      | 8 (top-2 active)    |
-| Layers       | 64                  |
-| Hidden size  | 6144                |
-| Attention    | 48 Q / 8 KV heads   |
-| Context      | 8192                |
-| Tokenizer    | SentencePiece 131k  |
+Unchanged from upstream.
+
+| Spec | Value |
+| --- | --- |
+| Parameters | 314B (MoE) |
+| Experts | 8 (top-2 active) |
+| Layers | 64 |
+| Hidden size | 6144 |
+| Attention | 48 Q / 8 KV heads |
+| Context | 8192 |
+| Tokenizer | SentencePiece, 131k |
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
 git clone https://github.com/MiMindMendinc/grok-1.git
@@ -52,7 +51,7 @@ cd grok-1
 pip install -r requirements.txt
 ```
 
-### Weights (required for full model)
+### Weights (full model only)
 
 ```bash
 pip install "huggingface_hub[hf_transfer]"
@@ -63,7 +62,9 @@ huggingface-cli download xai-org/grok-1 \
   --local-dir-use-symlinks False
 ```
 
-### Run (JAX backend)
+RoPE tests and micro-benchmarks do **not** need the 314B checkpoint.
+
+### Run — JAX backend
 
 ```bash
 python run.py \
@@ -74,7 +75,7 @@ python run.py \
   --rope-backend jax
 ```
 
-### Triton RoPE path
+### Run — Triton RoPE
 
 ```bash
 python run.py \
@@ -85,9 +86,9 @@ python run.py \
   --rope-backend triton
 ```
 
-The Triton path falls back safely when the kernel is unavailable.
+If Triton or CUDA is unavailable, the kernel falls back to JAX.
 
-Mesh, padding, and sharding are explicit CLI flags on `run.py`:
+### Mesh, padding, sharding
 
 ```bash
 python run.py \
@@ -98,60 +99,59 @@ python run.py \
   --pad-sizes 1024
 ```
 
+```bash
+python run.py --help
+```
+
 ---
 
-## Benchmarks & Correctness
+## Benchmarks and correctness
 
-All timing numbers are gated behind correctness checks.
+Timing is gated. A failing numerical check withholds the speedup.
 
 ```bash
-# RoPE unit + regression tests
 python -m pytest tests/test_rope.py -v
-
-# RoPE performance harness
 python benchmarks/rope_benchmark.py
 ```
 
-We deliberately separate correctness from performance.
-If the numerical gate fails, the benchmark does not report speedups.
+---
+
+## Layout
+
+```
+run.py                  CLI entry point
+model.py / runners.py   Inference stack (from upstream)
+rope_triton.py          Optional Triton RoPE + JAX reference
+benchmarks/             Correctness-gated harnesses
+tests/                  RoPE and CLI regression tests
+PROJECT_STRATEGY.md     Research direction
+NOTICE                  Fork attribution
+```
 
 ---
 
-## Repository Layout
+## Status
 
-```
-rope_triton.py          # Triton RoPE implementation
-benchmarks/             # Reproducible harnesses
-tests/                  # Correctness & regression tests
-model.py / runners.py   # Core inference stack (derived from upstream)
-run.py                  # Clean CLI entry point
-```
-
----
-
-## Status & Roadmap
-
-- [x] Triton RoPE backend + fallback
+- [x] Triton RoPE backend with JAX fallback
 - [x] Correctness-gated benchmarks
-- [x] Clean CLI and mesh controls
+- [x] CLI for backend, mesh, padding, and sharding
 - [ ] Broader attention kernel experiments
 - [ ] Quantization paths
 - [ ] Better single-GPU developer experience
 
-This is active research code. Expect sharp edges.
+Active research code. Expect sharp edges.
 
 ---
 
-## Citation / Attribution
+## License and attribution
 
-- Original model & code: [xai-org/grok-1](https://github.com/xai-org/grok-1) (Apache 2.0)
-- This fork: research extensions by Michigan MindMend
+- Original model and code: [xai-org/grok-1](https://github.com/xai-org/grok-1) ([Apache 2.0](LICENSE.txt))
+- This fork: research extensions by Michigan MindMend — see [NOTICE](NOTICE)
 
-If you use the RoPE or benchmark work, a link back is appreciated.
+If you use the RoPE or benchmark work, a citation or link back is appreciated.
 
 ---
 
 ## Contributing
 
-Serious PRs that improve correctness, clarity, or measured performance are welcome.
-See [PROJECT_STRATEGY.md](PROJECT_STRATEGY.md) for direction.
+PRs that improve correctness, clarity, or *measured* performance are welcome. Direction: [PROJECT_STRATEGY.md](PROJECT_STRATEGY.md).

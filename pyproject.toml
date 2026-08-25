@@ -1,3 +1,11 @@
+[project]
+name = "grok-1"
+version = "0.1.0"
+description = "Research fork of xAI Grok-1 — Triton RoPE and correctness-gated benchmarks. Not an official xAI repository."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE.txt" }
+
 [tool.ruff]
 indent-width = 4
 line-length = 100
@@ -12,3 +20,6 @@ ignore = [
     "F403",
 ]
 select = ["ISC001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
