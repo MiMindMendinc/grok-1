@@ -16,7 +16,7 @@ Upstream fused-RoPE discussion: [xai-org/grok-1#434](https://github.com/xai-org/
 
 ## Why this fork exists
 
-The official Grok-1 release is an excellent reference. This repository exists to make the RoPE and attention-related paths more explicit, testable, and optimizable — on the real architecture, without serving-stack hype.
+The upstream xAI Grok-1 code is an excellent reference. This repository exists to make the RoPE and attention-related paths more explicit, testable, and optimizable — on the real architecture, without serving-stack hype.
 
 | Included | Not included |
 | --- | --- |
