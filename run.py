@@ -157,6 +157,9 @@ def interactive_loop(
 
 
 def main():
+    args = parse_args()
+    validate_args(args)
+
     try:
         from runners import InferenceRunner, ModelRunner, sample_from_model as _sample_from_model
     except ModuleNotFoundError as exc:
@@ -169,9 +172,6 @@ def main():
 
     global sample_from_model
     sample_from_model = _sample_from_model
-
-    args = parse_args()
-    validate_args(args)
 
     model_config = build_model_config(sequence_len=args.sequence_len, rope_backend=args.rope_backend)
     inference_runner = InferenceRunner(
