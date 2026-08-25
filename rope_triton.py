@@ -9,25 +9,14 @@ from __future__ import annotations
 from typing import Optional
 
 
-def apply_rope_jax_compatible(
+def apply_rope_jax_reference(
     x,
     offset,
     inv_freq,
     const_position: Optional[int] = None,
     t=None,
 ):
-    """JAX-facing RoPE entrypoint.
-
-    When a CUDA Triton runtime is available and the call uses the standard position mode,
-    this routes through the actual Triton kernel bridge. Otherwise it falls back to the
-    numerically equivalent JAX implementation below.
-    """
-    if const_position is None and t is None and can_apply_rope_to_jax_array(x):
-        try:
-            return apply_rope_triton_jax(x=x, offset=offset, inv_freq=inv_freq)
-        except Exception:
-            pass
-
+    """Pure JAX RoPE reference. Never routes through Triton."""
     import jax.numpy as jnp
 
     fprop_dtype = x.dtype
@@ -47,6 +36,34 @@ def apply_rope_jax_compatible(
     x1, x2 = jnp.split(x, 2, axis=-1)
     rotated = jnp.concatenate((-x2, x1), axis=-1)
     return (x * jnp.cos(phase) + rotated * jnp.sin(phase)).astype(fprop_dtype)
+
+
+def apply_rope_jax_compatible(
+    x,
+    offset,
+    inv_freq,
+    const_position: Optional[int] = None,
+    t=None,
+):
+    """JAX-facing RoPE entrypoint.
+
+    When a CUDA Triton runtime is available and the call uses the standard position mode,
+    this routes through the actual Triton kernel bridge. Otherwise it falls back to the
+    numerically equivalent JAX implementation.
+    """
+    if const_position is None and t is None and can_apply_rope_to_jax_array(x):
+        try:
+            return apply_rope_triton_jax(x=x, offset=offset, inv_freq=inv_freq)
+        except Exception:
+            pass
+
+    return apply_rope_jax_reference(
+        x=x,
+        offset=offset,
+        inv_freq=inv_freq,
+        const_position=const_position,
+        t=t,
+    )
 
 
 def is_triton_available() -> bool:
@@ -248,7 +265,7 @@ def apply_rope_triton_jax(x, offset, inv_freq, const_position: Optional[int] = N
     use the native JAX-compatible implementation instead.
     """
     if const_position is not None or t is not None:
-        return apply_rope_jax_compatible(
+        return apply_rope_jax_reference(
             x=x,
             offset=offset,
             inv_freq=inv_freq,
