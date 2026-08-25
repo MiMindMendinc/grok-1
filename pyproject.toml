@@ -1,7 +1,7 @@
 [project]
-name = "grok-1"
+name = "anvil"
 version = "0.1.0"
-description = "Research fork of xAI Grok-1 — Triton RoPE and correctness-gated benchmarks. Not an official xAI repository."
+description = "Anvil — research fork of xAI Grok-1. Triton RoPE and correctness-gated benchmarks. Not affiliated with xAI."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE.txt" }

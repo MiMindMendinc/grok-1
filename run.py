@@ -51,7 +51,7 @@ def build_model_config(sequence_len: int = 8192, rope_backend: str = "jax"):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Grok-1 JAX inference.")
+    parser = argparse.ArgumentParser(description="Anvil: Grok-1 architecture inference (JAX).")
     parser.add_argument("--checkpoint-path", default=DEFAULT_CKPT_PATH)
     parser.add_argument("--tokenizer-path", default=DEFAULT_TOKENIZER_PATH)
     parser.add_argument("--prompt", default="The answer to life, the universe, and everything is")

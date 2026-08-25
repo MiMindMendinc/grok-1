@@ -1,6 +1,6 @@
 # Project strategy
 
-This repository is a **research fork** of [xai-org/grok-1](https://github.com/xai-org/grok-1). It is not an official xAI project and not a production inference engine.
+**Anvil** is an independent research fork of [xai-org/grok-1](https://github.com/xai-org/grok-1). It is not affiliated with xAI and is not a production inference engine.
 
 ## Purpose
 
