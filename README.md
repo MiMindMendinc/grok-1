@@ -1,35 +1,30 @@
-# Grok-1 Research Fork
+# Anvil
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.txt)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB.svg)](https://www.python.org/downloads/)
 [![JAX](https://img.shields.io/badge/framework-JAX-red.svg)](https://github.com/google/jax)
 [![Tests](https://github.com/MiMindMendinc/grok-1/actions/workflows/tests.yml/badge.svg)](https://github.com/MiMindMendinc/grok-1/actions/workflows/tests.yml)
 
-> [!IMPORTANT]
-> **This is not an official xAI repository.** It is a research fork of [xai-org/grok-1](https://github.com/xai-org/grok-1), maintained by Michigan MindMend, under Apache 2.0.
+Independent research on rotary embeddings for the Grok-1 architecture. Triton RoPE, JAX fallback, and benchmarks that withhold speedups unless the numbers match.
 
-Focused work on rotary position embeddings (RoPE): a guarded Triton backend, JAX fallback, and a benchmark harness that **will not report a speedup** unless the numerical gate passes.
+Fork of [xai-org/grok-1](https://github.com/xai-org/grok-1). Apache 2.0. Not affiliated with xAI.
+
+---
+
+## Scope
+
+| In | Out |
+| --- | --- |
+| Triton RoPE with JAX fallback | Production serving |
+| Correctness gates before timing | Unverified speedup claims |
+| Reproducible micro-benchmarks | Laptop-scale 314B inference |
+| Explicit mesh, padding, sharding CLI | A hosted Grok API |
 
 Upstream fused-RoPE discussion: [xai-org/grok-1#434](https://github.com/xai-org/grok-1/pull/434).
 
 ---
 
-## Why this fork exists
-
-The upstream xAI Grok-1 code is an excellent reference. This repository exists to make the RoPE and attention-related paths more explicit, testable, and optimizable — on the real architecture, without serving-stack hype.
-
-| Included | Not included |
-| --- | --- |
-| Triton RoPE path with JAX fallback | Production serving |
-| Correctness gates before any timing | Unverified multi-x speedup claims |
-| Reproducible micro-benchmarks | Laptop-scale 314B inference |
-| Explicit mesh, padding, and sharding CLI | A hosted Grok API |
-
----
-
-## Model specs
-
-Unchanged from upstream.
+## Architecture (upstream)
 
 | Spec | Value |
 | --- | --- |
@@ -62,7 +57,7 @@ huggingface-cli download xai-org/grok-1 \
   --local-dir-use-symlinks False
 ```
 
-RoPE tests and micro-benchmarks do **not** need the 314B checkpoint.
+RoPE tests and micro-benchmarks do not need the 314B checkpoint.
 
 ### Run — JAX backend
 
@@ -105,7 +100,7 @@ python run.py --help
 
 ---
 
-## Benchmarks and correctness
+## Benchmarks
 
 Timing is gated. A failing numerical check withholds the speedup.
 
@@ -119,13 +114,13 @@ python benchmarks/rope_benchmark.py
 ## Layout
 
 ```
-run.py                  CLI entry point
+run.py                  CLI
 model.py / runners.py   Inference stack (from upstream)
-rope_triton.py          Optional Triton RoPE + JAX reference
+rope_triton.py          Triton RoPE + JAX reference
 benchmarks/             Correctness-gated harnesses
-tests/                  RoPE and CLI regression tests
+tests/                  RoPE and CLI tests
 PROJECT_STRATEGY.md     Research direction
-NOTICE                  Fork attribution
+NOTICE                  Attribution
 ```
 
 ---
@@ -139,19 +134,17 @@ NOTICE                  Fork attribution
 - [ ] Quantization paths
 - [ ] Better single-GPU developer experience
 
-Active research code. Expect sharp edges.
+Research code. Expect sharp edges.
 
 ---
 
-## License and attribution
+## License
 
-- Original model and code: [xai-org/grok-1](https://github.com/xai-org/grok-1) ([Apache 2.0](LICENSE.txt))
-- This fork: research extensions by Michigan MindMend — see [NOTICE](NOTICE)
-
-If you use the RoPE or benchmark work, a citation or link back is appreciated.
+- Upstream model and code: [xai-org/grok-1](https://github.com/xai-org/grok-1) ([Apache 2.0](LICENSE.txt))
+- Anvil: Michigan MindMend — [NOTICE](NOTICE)
 
 ---
 
 ## Contributing
 
-PRs that improve correctness, clarity, or *measured* performance are welcome. Direction: [PROJECT_STRATEGY.md](PROJECT_STRATEGY.md).
+PRs that improve correctness, clarity, or measured performance: [PROJECT_STRATEGY.md](PROJECT_STRATEGY.md).
