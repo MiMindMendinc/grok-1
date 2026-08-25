@@ -22,7 +22,7 @@ try:
     )
 
     HAS_JAX_STACK = True
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError, RuntimeError):
     HAS_JAX_STACK = False
 
 try:
